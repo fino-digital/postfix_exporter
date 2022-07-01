@@ -2,9 +2,8 @@ name: ci
 
 on:
   push:
-    branches:
-      - "master"
-
+    tags:
+      - '^[0-9]+\.[0-9]+\.[0-9]+'
 jobs:
   docker:
     runs-on: ubuntu-latest
@@ -23,4 +22,4 @@ jobs:
         with:
           context: .
           push: true
-          tags: finodigital/postfix_exporter:latest
+          tags: finodigital/postfix_exporter:${{CI_REF_NAME_SLUG}}
