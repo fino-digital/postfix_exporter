@@ -17,6 +17,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -54,6 +55,7 @@ type PostfixExporter struct {
 	qmgrInsertsSize                 prometheus.Histogram
 	qmgrRemoves                     prometheus.Counter
 	smtpDelays                      *prometheus.HistogramVec
+	smtpRcpt                        *prometheus.CounterVec
 	smtpTLSConnects                 *prometheus.CounterVec
 	smtpConnectionTimedOut          prometheus.Counter
 	smtpDeferreds                   prometheus.Counter
@@ -288,6 +290,7 @@ func CollectShowqFromSocket(path string, ch chan<- prometheus.Metric) error {
 var (
 	logLine                             = regexp.MustCompile(` ?(postfix|opendkim)(/(\w+))?\[\d+\]: (.*)`)
 	lmtpPipeSMTPLine                    = regexp.MustCompile(`, relay=(\S+), .*, delays=([0-9\.]+)/([0-9\.]+)/([0-9\.]+)/([0-9\.]+), `)
+	smtpRcpt                            = regexp.MustCompile(` to=<(\S*@(\S*))>, relay=(\S+),.* status=sent \(250 `)
 	qmgrInsertLine                      = regexp.MustCompile(`:.*, size=(\d+), nrcpt=(\d+) `)
 	smtpStatusDeferredLine              = regexp.MustCompile(`, status=deferred`)
 	smtpTLSLine                         = regexp.MustCompile(`^(\S+) TLS connection established to \S+: (\S+) with cipher (\S+) \((\d+)/(\d+) bits\)`)
@@ -362,6 +365,9 @@ func (e *PostfixExporter) CollectFromLogLine(line string) {
 				if smtpMatches := smtpStatusDeferredLine.FindStringSubmatch(remainder); smtpMatches != nil {
 					e.smtpStatusDeferred.Inc()
 				}
+				if smtpMatchesRcpt := smtpRcpt.FindStringSubmatch(remainder); smtpMatchesRcpt != nil {
+					e.smtpRcpt.WithLabelValues(fmt.Sprintf("%x", sha256.Sum256([]byte(smtpMatchesRcpt[1]))), smtpMatchesRcpt[2], smtpMatchesRcpt[3]).Inc()
+				}
 			} else if smtpTLSMatches := smtpTLSLine.FindStringSubmatch(remainder); smtpTLSMatches != nil {
 				e.smtpTLSConnects.WithLabelValues(smtpTLSMatches[1:]...).Inc()
 			} else if smtpMatches := smtpConnectionTimedOut.FindStringSubmatch(remainder); smtpMatches != nil {
@@ -369,6 +375,7 @@ func (e *PostfixExporter) CollectFromLogLine(line string) {
 			} else {
 				e.addToUnsupportedLine(line, subprocess)
 			}
+
 		case "smtpd":
 			if strings.HasPrefix(remainder, "connect from ") {
 				e.smtpdConnects.Inc()
@@ -492,6 +499,13 @@ func NewPostfixExporter(showqPath string, logSrc LogSource, logUnsupportedLines 
 				Buckets:   timeBuckets,
 			},
 			[]string{"stage"}),
+		smtpRcpt: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: "postfix",
+				Name:      "smtp_sent_messages",
+				Help:      "Total number of sent messages.",
+			},
+			[]string{"hash", "domain", "relay"}),
 		smtpTLSConnects: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Namespace: "postfix",
@@ -596,6 +610,7 @@ func (e *PostfixExporter) Describe(ch chan<- *prometheus.Desc) {
 	ch <- e.qmgrInsertsSize.Desc()
 	ch <- e.qmgrRemoves.Desc()
 	e.smtpDelays.Describe(ch)
+	e.smtpRcpt.Describe(ch)
 	e.smtpTLSConnects.Describe(ch)
 	ch <- e.smtpDeferreds.Desc()
 	ch <- e.smtpdConnects.Desc()
@@ -671,6 +686,7 @@ func (e *PostfixExporter) Collect(ch chan<- prometheus.Metric) {
 	ch <- e.qmgrInsertsSize
 	ch <- e.qmgrRemoves
 	e.smtpDelays.Collect(ch)
+	e.smtpRcpt.Collect(ch)
 	e.smtpTLSConnects.Collect(ch)
 	ch <- e.smtpDeferreds
 	ch <- e.smtpdConnects

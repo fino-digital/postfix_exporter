@@ -22,4 +22,4 @@ jobs:
         with:
           context: .
           push: true
-          tags: finodigital/postfix_exporter:${{CI_REF_NAME_SLUG}}
+          tags: finodigital/postfix_exporter:${{ CI_REF_NAME_SLUG }}
