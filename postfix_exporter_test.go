@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -21,6 +23,7 @@ func TestPostfixExporter_CollectFromLogline(t *testing.T) {
 		qmgrInsertsSize                 prometheus.Histogram
 		qmgrRemoves                     prometheus.Counter
 		smtpDelays                      *prometheus.HistogramVec
+		smtpRcpt                        *prometheus.CounterVec
 		smtpTLSConnects                 *prometheus.CounterVec
 		smtpDeferreds                   prometheus.Counter
 		smtpdConnects                   prometheus.Counter
@@ -165,6 +168,7 @@ func TestPostfixExporter_CollectFromLogline(t *testing.T) {
 			},
 			fields: fields{
 				smtpDelays: prometheus.NewHistogramVec(prometheus.HistogramOpts{}, []string{"stage"}),
+				smtpRcpt:   prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{fmt.Sprintf("%x", sha256.Sum256([]byte("hebj@telia.com"))), "telia.com", "mail.telia.com[81.236.60.210]:25"}),
 			},
 		},
 	}
@@ -182,6 +186,7 @@ func TestPostfixExporter_CollectFromLogline(t *testing.T) {
 				qmgrInsertsSize:                 tt.fields.qmgrInsertsSize,
 				qmgrRemoves:                     tt.fields.qmgrRemoves,
 				smtpDelays:                      tt.fields.smtpDelays,
+				smtpRcpt:                        tt.fields.smtpRcpt,
 				smtpTLSConnects:                 tt.fields.smtpTLSConnects,
 				smtpDeferreds:                   tt.fields.smtpDeferreds,
 				smtpdConnects:                   tt.fields.smtpdConnects,
